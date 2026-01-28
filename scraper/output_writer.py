@@ -22,6 +22,11 @@ class OutputWriter:
         self.output_file = output_file
         self.output_format = output_format.upper()
         
+        # Ensure parent directory exists
+        parent_dir = Path(output_file).parent
+        if parent_dir:
+            parent_dir.mkdir(parents=True, exist_ok=True)
+        
         # Initialize format-specific writers
         if self.output_format == 'CSV':
             self._init_csv()

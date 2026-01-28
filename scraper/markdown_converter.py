@@ -53,6 +53,13 @@ class MarkdownConverter:
         self.html_converter.ignore_emphasis = False
         self.html_converter.body_width = 0  # Don't wrap lines
         self.html_converter.unicode_snob = True  # Use unicode characters
+        self.html_converter.escape_snob = False  # Don't escape special characters
+        self.html_converter.skip_internal_links = False  # Include internal links
+        self.html_converter.inline_links = True  # Use inline link format
+        self.html_converter.protect_links = True  # Protect links from line wrapping
+        self.html_converter.ignore_tables = False  # Include tables
+        self.html_converter.bypass_tables = False  # Process tables
+        self.html_converter.ignore_anchors = False  # Include anchors
         
         # Initialize browser fetcher if needed
         self.browser_fetcher = None
@@ -136,8 +143,27 @@ class MarkdownConverter:
             self.logger.info(f"Redirected from {url} to {final_url}")
         
         try:
+            # Check if HTML has substantial content
+            html_length = len(html_content)
+            self.logger.debug(f"HTML content length: {html_length} characters")
+            
             # Convert HTML to Markdown
             markdown_content = self.html_converter.handle(html_content)
+            
+            # Check if markdown conversion produced content
+            markdown_length = len(markdown_content.strip())
+            self.logger.debug(f"Markdown content length: {markdown_length} characters")
+            
+            if markdown_length == 0:
+                self.logger.warning(
+                    f"Markdown conversion produced empty content. "
+                    f"This might be a JavaScript-rendered page. "
+                    f"Try using --use-browser flag."
+                )
+                # Try to extract text directly from HTML as fallback
+                markdown_content = self._extract_text_fallback(html_content)
+                if len(markdown_content.strip()) == 0:
+                    markdown_content = "\n*Note: This page appears to be a Single Page Application (SPA) that loads content via JavaScript. Use --use-browser flag to render the full content.*\n"
             
             # Add metadata header
             metadata = f"# {self._extract_title(html_content)}\n\n"
@@ -171,6 +197,37 @@ class MarkdownConverter:
         
         return "Untitled"
     
+    def _extract_text_fallback(self, html_content: str) -> str:
+        """
+        Fallback method to extract text from HTML when html2text fails.
+        
+        Args:
+            html_content: HTML content
+            
+        Returns:
+            Plain text content
+        """
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html_content, 'lxml')
+            
+            # Remove script and style elements
+            for script in soup(["script", "style", "meta", "link"]):
+                script.decompose()
+            
+            # Get text
+            text = soup.get_text()
+            
+            # Clean up whitespace
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = '\n'.join(chunk for chunk in chunks if chunk)
+            
+            return text
+        except Exception as e:
+            self.logger.debug(f"Fallback text extraction failed: {e}")
+            return ""
+    
     def convert_to_markdown_file(self, url: str, output_file: str) -> bool:
         """
         Convert URL to Markdown and save to file.
@@ -188,6 +245,12 @@ class MarkdownConverter:
             return False
         
         try:
+            # Ensure parent directory exists
+            from pathlib import Path
+            parent_dir = Path(output_file).parent
+            if parent_dir:
+                parent_dir.mkdir(parents=True, exist_ok=True)
+            
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(markdown_content)
             

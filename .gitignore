@@ -127,6 +127,7 @@ dmypy.json
 *.json
 *.db
 !requirements.txt
+output/
 
 # IDE
 .vscode/

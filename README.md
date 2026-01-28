@@ -15,6 +15,7 @@ A link-only web scraper (crawler) that starts from one or more seed URLs and col
 - **Concurrent crawling**: Configurable concurrent requests for performance
 - **SPA Support**: Optional browser mode (Playwright) for JavaScript-rendered pages and Single Page Applications
 - **Markdown Conversion**: Convert any web page to Markdown format (supports both static and JavaScript-rendered pages)
+- **Organized Output**: Files are automatically organized into domain-based folders for easy management
 
 ## Installation
 
@@ -170,6 +171,34 @@ This will crawl up to depth 2 (seed → links on seed → links on those pages) 
 If both limits are set, crawling stops when **either** condition is met:
 - Maximum URLs collected, OR
 - Maximum depth reached
+
+## Output Organization
+
+All output files are automatically organized into domain-based folders:
+
+```
+output/
+├── example.com/
+│   ├── example.com.csv
+│   ├── article-page.md
+│   └── ...
+├── other-domain.com/
+│   ├── other-domain.com.json
+│   └── ...
+└── ...
+```
+
+This makes it easy to:
+- Keep files organized by domain
+- Find files for specific websites
+- Manage multiple crawls without file conflicts
+- Clean up old crawls by domain
+
+You can customize the base output directory with `--output-dir`:
+
+```bash
+python main.py --seed-urls https://example.com --max-urls 100 --output-dir my-outputs
+```
 
 ## Output Format
 

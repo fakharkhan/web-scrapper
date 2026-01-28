@@ -3,6 +3,7 @@
 
 import argparse
 import sys
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -122,7 +123,12 @@ Examples:
     )
     parser.add_argument(
         '--output-file',
-        help='Output file path (default: <domain>.csv/json/db based on seed URL domain and format)'
+        help='Output file path (default: output/<domain>/<domain>.csv/json/db based on seed URL domain and format)'
+    )
+    parser.add_argument(
+        '--output-dir',
+        default='output',
+        help='Base output directory for organizing files by domain (default: output)'
     )
     parser.add_argument(
         '--log-level',
@@ -169,30 +175,56 @@ def extract_domain(url: str) -> str:
         return 'output'
 
 
-def get_output_file(output_format: str, seed_urls: list = None, user_specified: str = None) -> str:
+def get_domain_folder(domain: str, base_dir: str = "output") -> str:
     """
-    Determine output file path.
+    Get domain folder path, creating it if it doesn't exist.
+    
+    Args:
+        domain: Domain name
+        base_dir: Base directory for outputs (default: "output")
+        
+    Returns:
+        Domain folder path
+    """
+    # Sanitize domain name for filesystem (remove invalid characters)
+    safe_domain = domain.replace('/', '_').replace('\\', '_').replace(':', '_')
+    domain_folder = os.path.join(base_dir, safe_domain)
+    
+    # Create folder if it doesn't exist
+    os.makedirs(domain_folder, exist_ok=True)
+    
+    return domain_folder
+
+
+def get_output_file(output_format: str, seed_urls: list = None, user_specified: str = None, base_dir: str = "output") -> str:
+    """
+    Determine output file path, organized by domain folder.
     
     Args:
         output_format: Output format (CSV, JSON, SQLite)
         seed_urls: List of seed URLs to extract domain from
         user_specified: User-specified output file path
+        base_dir: Base directory for outputs (default: "output")
         
     Returns:
         Output file path
     """
     if user_specified:
+        # If user specified a path, ensure parent directory exists
+        parent_dir = os.path.dirname(user_specified)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         return user_specified
     
     # Extract domain from first seed URL
     domain = 'output'
     if seed_urls:
         domain = extract_domain(seed_urls[0])
-        # If multiple seed URLs with different domains, append count
-        if len(seed_urls) > 1:
-            domains = set(extract_domain(url) for url in seed_urls)
-            if len(domains) > 1:
-                domain = f"{domain}_and_{len(domains)-1}more"
+        # If multiple seed URLs with different domains, use first domain
+        # (we'll organize by primary domain)
+    
+    # Get domain folder
+    domain_folder = get_domain_folder(domain, base_dir)
     
     # File extensions based on format
     extensions = {
@@ -202,7 +234,9 @@ def get_output_file(output_format: str, seed_urls: list = None, user_specified: 
     }
     
     extension = extensions.get(output_format, '.csv')
-    return f"{domain}{extension}"
+    filename = f"{domain}{extension}"
+    
+    return os.path.join(domain_folder, filename)
 
 
 def main():
@@ -220,12 +254,33 @@ def main():
             logger.error("Invalid URL provided for markdown conversion")
             sys.exit(1)
         
-        # Determine output file
+        # Determine output file (organized by domain folder)
         if args.output_file:
             output_file = args.output_file
+            # Ensure parent directory exists
+            parent_dir = os.path.dirname(output_file)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
         else:
             domain = extract_domain(url)
-            output_file = f"{domain}.md"
+            base_dir = getattr(args, 'output_dir', 'output')
+            domain_folder = get_domain_folder(domain, base_dir)
+            # Generate filename from URL path or use domain
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            path_part = parsed.path.strip('/').replace('/', '_') or 'index'
+            # Limit filename length
+            if len(path_part) > 50:
+                path_part = path_part[:50]
+            filename = f"{path_part}.md" if path_part != 'index' else f"{domain}.md"
+            output_file = os.path.join(domain_folder, filename)
+        
+        # Check if browser mode is needed (warn if not using browser for potential SPA)
+        if not args.use_browser:
+            logger.warning(
+                "Note: If the page is a Single Page Application (SPA) that loads content via JavaScript, "
+                "use --use-browser flag to render the full content."
+            )
         
         # Initialize markdown converter
         try:
@@ -298,7 +353,12 @@ def main():
         deny_patterns = [pattern.strip() for pattern in args.deny_patterns.split(',') if pattern.strip()]
     
     # Determine output file (based on domain if not user-specified)
-    output_file = get_output_file(args.output_format, seed_urls, args.output_file)
+    output_file = get_output_file(
+        args.output_format, 
+        seed_urls, 
+        args.output_file,
+        base_dir=getattr(args, 'output_dir', 'output')
+    )
     
     # Initialize output writer
     try:
