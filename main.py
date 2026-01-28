@@ -9,40 +9,42 @@ from urllib.parse import urlparse
 from scraper.crawler import Crawler
 from scraper.output_writer import OutputWriter
 from scraper.logger import setup_logger
+from scraper.markdown_converter import MarkdownConverter
 
 
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description='Link-only web scraper that collects hyperlinks from web pages',
+        description='Web scraper: collect hyperlinks or convert URLs to Markdown',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
+  # Link scraping - Basic usage
   python main.py --seed-urls https://example.com --max-urls 100
 
-  # With depth limit
-  python main.py --seed-urls https://example.com --max-urls 100 --max-depth 2
+  # Markdown conversion - Basic
+  python main.py --to-markdown https://example.com/article
 
-  # With domain restriction
-  python main.py --seed-urls https://example.com --max-urls 100 --allowed-domains example.com
-
-  # JSON output
-  python main.py --seed-urls https://example.com --max-urls 100 --output-format JSON --output-file links.json
+  # Markdown conversion - With browser (for SPAs)
+  python main.py --to-markdown https://spa-site.com --use-browser --output-file article.md
         """
     )
     
-    # Required arguments
+    # Markdown conversion mode
+    parser.add_argument(
+        '--to-markdown',
+        help='Convert URL to Markdown format (alternative to link scraping)'
+    )
+    
+    # Link scraping arguments (required if not using --to-markdown)
     parser.add_argument(
         '--seed-urls',
-        required=True,
-        help='Comma-separated list of seed URLs to start crawling from'
+        help='Comma-separated list of seed URLs to start crawling from (required for link scraping)'
     )
     parser.add_argument(
         '--max-urls',
         type=int,
-        required=True,
-        help='Maximum number of URLs to collect (n)'
+        help='Maximum number of URLs to collect (required for link scraping)'
     )
     
     # Optional arguments
@@ -209,6 +211,62 @@ def main():
     
     # Setup logger
     logger = setup_logger(args.log_level)
+    
+    # Check if markdown conversion mode
+    if args.to_markdown:
+        # Markdown conversion mode
+        url = args.to_markdown.strip()
+        if not url:
+            logger.error("Invalid URL provided for markdown conversion")
+            sys.exit(1)
+        
+        # Determine output file
+        if args.output_file:
+            output_file = args.output_file
+        else:
+            domain = extract_domain(url)
+            output_file = f"{domain}.md"
+        
+        # Initialize markdown converter
+        try:
+            converter = MarkdownConverter(
+                use_browser=args.use_browser,
+                timeout=args.timeout if hasattr(args, 'timeout') else 30,
+                user_agent=args.user_agent if hasattr(args, 'user_agent') else 'WebScraper/1.0',
+                logger=logger,
+            )
+        except ImportError as e:
+            logger.error(f"Failed to initialize markdown converter: {e}")
+            logger.error("Install html2text with: pip install html2text")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Failed to initialize markdown converter: {e}")
+            sys.exit(1)
+        
+        # Convert to markdown
+        try:
+            success = converter.convert_to_markdown_file(url, output_file)
+            if success:
+                logger.info(f"Successfully converted {url} to {output_file}")
+                print(f"\nMarkdown saved to: {output_file}")
+            else:
+                logger.error(f"Failed to convert {url} to markdown")
+                sys.exit(1)
+        except KeyboardInterrupt:
+            logger.info("Conversion interrupted by user")
+        except Exception as e:
+            logger.error(f"Conversion failed: {e}", exc_info=True)
+            sys.exit(1)
+        finally:
+            converter.close()
+        
+        return
+    
+    # Link scraping mode (default)
+    if not args.seed_urls or not args.max_urls:
+        logger.error("For link scraping, --seed-urls and --max-urls are required")
+        logger.error("For markdown conversion, use --to-markdown <URL>")
+        sys.exit(1)
     
     # Parse seed URLs
     seed_urls = [url.strip() for url in args.seed_urls.split(',') if url.strip()]

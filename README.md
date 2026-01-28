@@ -14,6 +14,7 @@ A link-only web scraper (crawler) that starts from one or more seed URLs and col
 - **Incremental writing**: Output is written as URLs are discovered
 - **Concurrent crawling**: Configurable concurrent requests for performance
 - **SPA Support**: Optional browser mode (Playwright) for JavaScript-rendered pages and Single Page Applications
+- **Markdown Conversion**: Convert any web page to Markdown format (supports both static and JavaScript-rendered pages)
 
 ## Installation
 
@@ -39,6 +40,8 @@ pip install -r requirements.txt
 pip install playwright
 playwright install chromium
 ```
+
+Note: `html2text` is automatically installed for markdown conversion support.
 
 ## Usage
 
@@ -87,6 +90,30 @@ python main.py --seed-urls https://example-spa.com --max-urls 100 --use-browser
 ```
 
 See [SPA Support Documentation](docs/spa-support.md) for detailed information.
+
+### Markdown Conversion
+
+Convert any web page to Markdown format:
+
+```bash
+# Basic conversion
+python main.py --to-markdown https://example.com/article
+
+# With browser mode (for SPAs)
+python main.py --to-markdown https://spa-site.com --use-browser
+
+# Specify output file
+python main.py --to-markdown https://example.com/article --output-file article.md
+```
+
+The converter extracts:
+- Page title
+- Text content
+- Links (preserved as markdown links)
+- Images (preserved as markdown images)
+- Headings, lists, and other formatting
+
+Output includes metadata (source URL, title) and the converted content in clean Markdown format.
 
 ## Command-Line Arguments
 
